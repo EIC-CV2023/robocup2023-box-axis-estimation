@@ -104,25 +104,25 @@ def normalize(vectors):
     return unit_vector.flatten()
 
 
-def process_kpts(kpts):
-    x1, y1 = np.min(kpts[:, 0]), np.min(kpts[:, 1])
-    x2, y2 = np.max(kpts[:, 0]), np.max(kpts[:, 1])
+# def process_kpts(kpts):
+#     x1, y1 = np.min(kpts[:, 0]), np.min(kpts[:, 1])
+#     x2, y2 = np.max(kpts[:, 0]), np.max(kpts[:, 1])
 
-    copy_kpts = np.copy(kpts)
-    copy_kpts[:, 0] = (copy_kpts[:, 0] - x1) / (x2-x1)
-    copy_kpts[:, 1] = (copy_kpts[:, 1] - y1) / (y2-y1)
+#     copy_kpts = np.copy(kpts)
+#     copy_kpts[:, 0] = (copy_kpts[:, 0] - x1) / (x2-x1)
+#     copy_kpts[:, 1] = (copy_kpts[:, 1] - y1) / (y2-y1)
 
-    return copy_kpts.reshape((1,16))
+#     return copy_kpts.reshape((1,16))
 
-def process_kpts_with_label(kpts, label):
-    x1, y1 = np.min(kpts[:, 0]), np.min(kpts[:, 1])
-    x2, y2 = np.max(kpts[:, 0]), np.max(kpts[:, 1])
+# def process_kpts_with_label(kpts, label):
+#     x1, y1 = np.min(kpts[:, 0]), np.min(kpts[:, 1])
+#     x2, y2 = np.max(kpts[:, 0]), np.max(kpts[:, 1])
 
-    copy_kpts = np.copy(kpts)
-    copy_kpts[:, 0] = (copy_kpts[:, 0] - x1) / (x2-x1)
-    copy_kpts[:, 1] = (copy_kpts[:, 1] - y1) / (y2-y1)
+#     copy_kpts = np.copy(kpts)
+#     copy_kpts[:, 0] = (copy_kpts[:, 0] - x1) / (x2-x1)
+#     copy_kpts[:, 1] = (copy_kpts[:, 1] - y1) / (y2-y1)
 
-    return np.concatenate(([label], copy_kpts.flatten())).reshape((1,17))
+#     return np.concatenate(([label], copy_kpts.flatten())).reshape((1,17))
 
 def process_kpts_with_label_angle(kpts, label, angle):
     x1, y1 = np.min(kpts[:, 0]), np.min(kpts[:, 1])
@@ -155,8 +155,9 @@ KEYPOINTS_CONF = 0.7
 # FRAME_WIDTH = cap.get(3)
 # FRAME_HEIGHT = cap.get(4)
 
-rand_color_list = np.random.rand(20, 3) * 255
+# rand_color_list = np.random.rand(20, 3) * 255
 start = time.time()
+res = dict()
 while cap.isOpened():
     res = []
     ret, frame = cap.read()
@@ -170,8 +171,8 @@ while cap.isOpened():
     frame = frame[:, :int(FRAME_WIDTH / 2)]
     FRAME_WIDTH /= 2
 
-    results = model.track(source=frame, conf=YOLO_CONF,
-                          show=False, verbose=False, persist=True)[0]
+    results = model.predict(source=frame, conf=YOLO_CONF,
+                          show=False, verbose=False)[0]
     kpts = results.keypoints.cpu().numpy()
     boxes = results.boxes.data.cpu().numpy()
     # print(boxes)
@@ -202,7 +203,6 @@ while cap.isOpened():
         print(fov_angle)
 
         keras_input = process_kpts_with_label_angle(obj_kpts, 0, fov_angle)
-        # keras_input = process_kpts(obj_kpts)
 
         # print(keras_input)
 
