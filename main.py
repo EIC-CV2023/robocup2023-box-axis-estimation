@@ -13,26 +13,28 @@ import tensorflow as tf
 import math
 
 
-WEIGHT = "weights/fov-oj-pose.pt"
-KERAS_WEIGHT = "weights/pose_fov.h5"
+WEIGHT = "weights/rbc2023-pose.pt"
+KERAS_WEIGHT = "weights/rbc2023-bae-n-noconf.h5"
 # DATASET_NAME = "coco"
 # DATASET_NAME = {0: "coke"}
-DATASET_NAME = {0: "snack", 1: "juice"}
+DATASET = ["red_wine", "cola", "tropical_juice", "milk", "iced_tea", "orange_juice", "tomato_soup", "strawberry_jello", "chocolate_jello", "sugar", "rubiks_cube", "pringles", "cornflakes", "cheezit", "chocolate_cornflakes"]
+# DATASET_NAME = {0: "snack", 1: "juice"}
 # YOLOV8_CONFIG = {"tracker": "botsort.yaml",
 #                  "conf": 0.7,
 #                  "iou": 0.3,
-#                  "show": True,
+#                  "show": False,
 #                  "verbose": False}
 
+BOX_INDEX = [5, 7, 8, 9, 10, 12, 13, 14]
 
 YOLO_CONF = 0.7
 KEYPOINTS_CONF = 0.7
 
-JOINT_LINES = [(0, 1), (2, 3), (4, 5), (6, 7), (1, 2),
-               (0, 3), (5, 6), (4, 7), (0, 7), (1, 6), (2, 5), (3, 4)]
-FACES = [(0, 1, 2, 3), (4, 5, 6, 7), (0, 3, 4, 7),
-         (1, 2, 5, 6), (0, 1, 6, 7), (2, 3, 4, 5)]
+JOINT_LINES = [(0,1), (1,2), (2,3), (3,0), (4,5), (5,6), (6,7), (7,4), (0,4),(1,7),(2,6),(3,5)]
 
+# xyz-x-y-z
+FACES = [(0, 1, 2, 3), (0, 3, 5, 4), (0, 1, 7, 4),
+         (4, 5, 6, 7), (1, 2, 6, 7), (2, 3, 5, 6)]
 V_FOV = 72
 H_FOV = 104.5
 
@@ -47,25 +49,30 @@ def process_keypoints(keypoints, conf, frame_width, frame_height, origin=(0, 0))
 
 def draw_points(frame, keypoints, color=(0, 255, 255)):
     for i, pt in enumerate(keypoints):
-        x, y = pt
-        cv2.putText(frame, str(i), (int(x), int(y)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+        x, y, conf = pt
+        if conf > KEYPOINTS_CONF:
+            cv2.putText(frame, str(i), (int(x), int(y)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
 
 def draw_3d_lines(frame, keypoints, joint_list):
     for joint in joint_list:
-        cv2.line(frame, [int(k) for k in keypoints[joint[0]]], [
-                 int(k) for k in keypoints[joint[1]]], (255, 255, 0), 1)
+        cv2.line(frame, [int(k) for k in keypoints[joint[0]][:2]], [
+                 int(k) for k in keypoints[joint[1]][:2]], (255, 255, 0), 1)
 
 
 def get_face_center(keypoints, faces_index_list):
     face_centroid = []
-    for face in faces_index_list:
-        corner_coord = np.array([keypoints[index] for index in face])
-        # print(corner_coord)
-        # print(np.mean(corner_coord, axis=0))
-        face_centroid.append(np.mean(corner_coord, axis=0))
-    return np.array(face_centroid)
+    visible_face = []
+    for i, face in enumerate(faces_index_list):
+        # corner_coord = np.array([keypoints[index] for index in face])
+        # # print(corner_coord)
+        # # print(np.mean(corner_coord, axis=0))
+        visible = np.all(keypoints[list(face), 2] > KEYPOINTS_CONF)
+        if visible:
+            visible_face.append(["+x","+y","+z","-x","-y","-z"][i])
+        face_centroid.append(list(np.mean(keypoints[list(face), :2], axis=0)) + [int(visible)])
+    return np.array(face_centroid), visible_face
 
 
 def axis(frame, vector_dir, max_len=75, color=(255, 0, 0), center="default"):
@@ -99,9 +106,10 @@ def process_kpts_with_label_angle(kpts, label, angle):
     x1, y1 = np.min(kpts[:, 0]), np.min(kpts[:, 1])
     x2, y2 = np.max(kpts[:, 0]), np.max(kpts[:, 1])
 
-    copy_kpts = np.copy(kpts)
+    copy_kpts = np.copy(kpts[:, :2])
     copy_kpts[:, 0] = (copy_kpts[:, 0] - x1) / (x2-x1)
     copy_kpts[:, 1] = (copy_kpts[:, 1] - y1) / (y2-y1)
+    # copy_kpts[:, 2] = kpts[:, 2] > KEYPOINTS_CONF
 
     return np.concatenate(([label], angle,  copy_kpts.flatten())).reshape((1,19))
 
@@ -156,22 +164,19 @@ def main():
         # Process frame received from client
         while True:
             res = dict()
+            msg = {"res": res}
+
             try:
-                data = server.recvMsg(conn, has_splitter=True)
+                data = server.recvMsg(
+                    conn, has_splitter=True, has_command=False)
+                frame_height, frame_width, img = data
 
-                frame_height, frame_width = int(data[0]), int(data[1])
-                # print(frame_height, frame_width)
-
-                img = np.frombuffer(
-                    data[-1], dtype=np.uint8).reshape(frame_height, frame_width, 3)
+                msg["camera_info"] = [frame_width, frame_height]
 
                 results = model.track(
-                    source=img, conf=YOLO_CONF, show=True, verbose=False, persist=True)[0]
+                    source=img, conf=YOLO_CONF, show=False, verbose=False, persist=True, imgsz=(frame_width, frame_height))[0]
                 kpts = results.keypoints.cpu().numpy()
                 boxes = results.boxes.data.cpu().numpy()
-
-
-
 
                 for obj_kpts, obj_box in zip(kpts, boxes):
                     obj_res = dict()
@@ -182,40 +187,50 @@ def main():
 
                     obj_res["bbox"] = (int(x1), int(y1), int(x2), int(y2))
                     obj_res["center"] = (int(cx), int(cy))
-                    obj_res["name"] = DATASET_NAME[obj_class]
+                    obj_res["name"] = DATASET[obj_class]
 
+                    if obj_class in BOX_INDEX:
+                        fov_angle = get_rel_angle((cx/frame_width,cy/frame_height), V_FOV, H_FOV)
+                        keras_input = process_kpts_with_label_angle(obj_kpts, obj_class, fov_angle)
+                        print(keras_input)
+                        pred_axis = normalize(keras_model.predict(keras_input, verbose=0))
 
+                        reshape_axis = pred_axis.reshape((3,3))
 
-                    fov_angle = get_rel_angle((cx/frame_width,cy/frame_height), V_FOV, H_FOV)
-                    keras_input = process_kpts_with_label_angle(obj_kpts, 0, fov_angle)
-                    pred_axis = normalize(keras_model.predict(keras_input, verbose=0))
+                        obj_res["normal0"] = [float(i) for i in reshape_axis[0]]
+                        obj_res["normal1"] = [float(i) for i in reshape_axis[1]]
+                        obj_res["normal2"] = [float(i) for i in reshape_axis[2]]
+                        obj_res["frame_dim"] = (frame_height, frame_width)
 
-                    reshape_axis = pred_axis.reshape((3,3))
+                        # print(fov_angle)
+                        # print(reshape_axis)
+                        draw_axis(img, pred_axis, center=(int(cx), int(cy)))
+                        draw_3d_lines(img, obj_kpts, JOINT_LINES)
 
-                    obj_res["normal0"] = [float(i) for i in reshape_axis[0]]
-                    obj_res["normal1"] = [float(i) for i in reshape_axis[1]]
-                    obj_res["normal2"] = [float(i) for i in reshape_axis[2]]
-                    obj_res["frame_dim"] = (frame_height, frame_width)
+                        face_center, visible_face = get_face_center(obj_kpts, FACES)
 
-                    print(fov_angle)
-                    print(reshape_axis)
+                        obj_res["face_center"] = face_center.astype("uint8").tolist()
+                        obj_res["visible_face"] = visible_face
+
+                        draw_points(img, face_center, color = (125, 0, 255))
+
 
                     # Draw
                     cv2.rectangle(img, (int(x1), int(y1)),
                                 (int(x2), int(y2)), (255, 0, 255), 1)
-                    draw_3d_lines(img, obj_kpts, JOINT_LINES)
                     draw_points(img, obj_kpts)
-                    draw_axis(img, pred_axis, center=(int(cx), int(cy)))
 
                     res[obj_id] = obj_res
 
-                print(res)
+                # print(res)
+                msg['res'] = res
 
                 cv2.imshow("frame", img)
+                cv2.waitKey(1)
 
                 # Send back result
                 # print(res)
-                server.sendMsg(conn, json.dumps(res))
+                server.sendMsg(conn, json.dumps(msg))
 
             except Exception as e:
                 traceback.print_exc()

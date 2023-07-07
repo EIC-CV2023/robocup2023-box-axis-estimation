@@ -142,8 +142,11 @@ def get_rel_angle(center, v_fov, h_fov):
 
 
 model = YOLO("weights/fov-oj-pose.pt", task="pose")
-cap = cv2.VideoCapture(list_available_cam(5))
-# cap = cv2.VideoCapture("data/dof_test_2.mp4")
+# cap = cv2.VideoCapture(list_available_cam(5))
+cap = cv2.VideoCapture("data/dof_test_2.mp4")
+
+FRAME_WIDTH, FRAME_HEIGHT = int(cap.get(3)), int(cap.get(4))
+vid_writer = cv2.VideoWriter('pose_test.mp4', cv2.VideoWriter_fourcc(*"MJPG"), 10, (FRAME_WIDTH, FRAME_HEIGHT))
 
 keras_model = keras.models.load_model(
     "weights/pose_fov.h5", compile=False)
@@ -159,7 +162,7 @@ while cap.isOpened():
         print("Error")
         continue
 
-    FRAME_HEIGHT, FRAME_WIDTH = frame.shape[:-1]
+    # FRAME_HEIGHT, FRAME_WIDTH = frame.shape[:-1]
 
     # FOR ZED
     # frame = frame[:, :int(FRAME_WIDTH / 2)]
@@ -218,10 +221,13 @@ while cap.isOpened():
 
     cv2.imshow("frame", frame)
 
+    vid_writer.write(frame)
+
     key = cv2.waitKey(1)
 
     if key == ord("q"):
         cap.release()
 
+vid_writer.release()
 
 cv2.destroyAllWindows()

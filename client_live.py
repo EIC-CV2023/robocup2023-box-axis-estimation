@@ -30,6 +30,7 @@ c = CustomSocket(host, port)
 c.clientConnect()
 
 cap = cv2.VideoCapture(list_available_cam(10))
+# cap = cv2.VideoCapture("data/rbc2023-vid-test.mp4")
 cap.set(4, 480)
 cap.set(3, 640)
 
@@ -46,7 +47,12 @@ while cap.isOpened():
 
     print(msg)
 
-    if cv2.waitKey(1) == ord("q"):
+    key = cv2.waitKey(1)
+    # print(key)
+
+    if key == ord("q"):
         cap.release()
+    if key == ord('p'):
+        cv2.waitKey()
 
 cv2.destroyAllWindows()

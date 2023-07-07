@@ -157,7 +157,6 @@ KEYPOINTS_CONF = 0.7
 
 # rand_color_list = np.random.rand(20, 3) * 255
 start = time.time()
-res = dict()
 while cap.isOpened():
     res = []
     ret, frame = cap.read()
@@ -171,8 +170,8 @@ while cap.isOpened():
     frame = frame[:, :int(FRAME_WIDTH / 2)]
     FRAME_WIDTH /= 2
 
-    results = model.predict(source=frame, conf=YOLO_CONF,
-                          show=False, verbose=False)[0]
+    results = model.track(source=frame, conf=YOLO_CONF,
+                          show=False, verbose=False, persist=True)[0]
     kpts = results.keypoints.cpu().numpy()
     boxes = results.boxes.data.cpu().numpy()
     # print(boxes)
@@ -203,7 +202,6 @@ while cap.isOpened():
         print(fov_angle)
 
         keras_input = process_kpts_with_label_angle(obj_kpts, 0, fov_angle)
-
         # print(keras_input)
 
         pred_dof = normalize(keras_model.predict(keras_input, verbose=0))
